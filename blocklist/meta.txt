@@ -2354,3 +2354,4 @@ scontent-dfw5-3.xx.fbcdn.net
 scontent-phx1-1.xx.fbcdn.net
 9ebab56e-00cd-4052-9328-ac7a85dc4f19-netseer-ipaddr-assoc.xz.fbcdn.net
 www.prod.facebook.com
+scontent.xx.fbcdn.net
