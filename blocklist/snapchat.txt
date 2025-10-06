@@ -1115,3 +1115,4 @@ us-east1-aws-nlb-test.api.snapchat.com
 pro.snapchat.com
 us-west1-aws.api.snapchat.com
 scan-more.snapchat.com
+app-snapchat.snapchat.com
