@@ -2345,3 +2345,4 @@ mqtt.fallback.c10r.facebook.com
 scontent-phx1-1.cdninstagram.com
 chat-e2ee-ig-p42.fallback.c10r.facebook.com
 scontent-atl3-2.cdninstagram.com
+scontent.fallback.cdninstagram.com
