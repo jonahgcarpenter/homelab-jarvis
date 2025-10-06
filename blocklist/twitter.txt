@@ -36,3 +36,7 @@ twitter.co
 twitterinc.com
 twitteroauth.com
 twitterstat.us
+probe.twitter.com
+probe.twitter.com.cdn.cloudflare.net
+api-stream.twitter.com
+api-stream.twitter.com.cdn.cloudflare.net

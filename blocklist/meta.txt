@@ -2350,3 +2350,7 @@ scontent-det1-1.xx.fbcdn.net
 video-det1-1.xx.fbcdn.net
 rupload.facebook.com
 201d752c-0a9a-4859-a2f5-c3014850e0a0-netseer-ipaddr-assoc.xz.fbcdn.net
+scontent-dfw5-3.xx.fbcdn.net
+scontent-phx1-1.xx.fbcdn.net
+9ebab56e-00cd-4052-9328-ac7a85dc4f19-netseer-ipaddr-assoc.xz.fbcdn.net
+www.prod.facebook.com
