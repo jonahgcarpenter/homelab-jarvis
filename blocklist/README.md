@@ -1,3 +1,3 @@
-# A collective list of Pihole blocklist for social media apps
+# A collective list of Pihole blocklist
 
-I set this up for my parents for a child who overuses social media
+I set this up for my parents as a way to block apps for a given using wether using the LAN or a VPN tunnel
