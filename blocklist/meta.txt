@@ -1,4 +1,4 @@
-# This blocklist helps Pi-hole's admin restrict access to Facebook and its domains.
+# This blocklist helps Pi-hole's admin restrict access to Meta apps and its domains.
 # Curated from sources online.
 
 facebook.com
