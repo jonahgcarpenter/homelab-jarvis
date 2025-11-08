@@ -23,6 +23,8 @@ do
 
     ffmpeg \
         -hide_banner \
+        -loglevel debug \
+        -report \
         -loglevel error \
         -rtsp_transport tcp \
         -hwaccel cuvid \
