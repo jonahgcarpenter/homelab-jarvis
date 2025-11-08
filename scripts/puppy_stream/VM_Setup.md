@@ -19,6 +19,27 @@ sudo apt-get ffmpeg
 ## Setup system service
 
 ```
+# Create service file
+sudo nano /etc/systemd/system/puppy_stream.service
+
+# Paste contents
+[Unit]
+Description=Puppy Stream Service
+After=network-online.target
+
+[Service]
+User=carpenters
+Group=carpenters
+WorkingDirectory=/home/carpenters/puppy_stream
+ExecStart=/bin/bash /home/carpenters/puppy_stream/start_stream.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```
 sudo systemctl daemon-reload
 ```
 
