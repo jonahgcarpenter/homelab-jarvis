@@ -10,7 +10,6 @@ if [ -z "$RTSP_URL" ] || [ -z "$RTMP_URL" ]; then
     exit 1
 fi
 
-
 touch $LOG_FILE
 chmod 644 $LOG_FILE
 
@@ -25,7 +24,9 @@ do
     ffmpeg \
         -hide_banner \
         -loglevel error \
+        -rtsp_transport tcp \
         -hwaccel cuvid \
+        -hwaccel_output_format cuda \
         -c:v h264_cuvid \
         -i "$RTSP_URL" \
         -c:a copy \
