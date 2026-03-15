@@ -1,94 +1,135 @@
 #!/bin/bash
 
 # =================================================================
-#  Disk Clone Script with rsync and Proxmox Email Notification
+#  Multi-Drive Disk Offload Script with Capacity & State Tracking
 # =================================================================
-#  Syntax: sudo /path/to/script <source> <destination>
-#  Example: nohup sudo /root/clone_disk.sh /dev/sdd1 /dev/sdc1 &
+#  Syntax: sudo ./clone_disk.sh <source_dir>
+#  Example: sudo ./clone_disk.sh /mnt/frigate_backups/recordings
 # =================================================================
 
 # --- Configuration ---
-# Mount points
-SOURCE_MNT="/mnt/source_clone"
-DEST_MNT="/mnt/dest_clone"
-
-# Email settings
+DEST_DIRS=("/mnt/backup-0" "/mnt/backup-1")
 EMAIL_RECIPIENT="root@pam"
-PROXMOX_MAILER="/usr/bin/proxmox-mail-forward"
-
-# Log file for rsync output
 LOG_FILE="/var/log/clone_disk.log"
-exec &> "$LOG_FILE"
+
+# Send all output to both console and log file
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 # --- Argument & Pre-run Checks ---
-# Check if the correct number of arguments (2) is provided
-if [ "$#" -ne 2 ]; then
+if [ "$#" -ne 1 ]; then
   echo "Error: Incorrect number of arguments supplied."
-  echo "Usage: $0 <source_partition> <destination_partition>"
-  echo "Example: $0 /dev/sdd1 /dev/sdc1"
+  echo "Usage: $0 <source_directory>"
   exit 1
 fi
 
-# Assign command-line arguments to variables
-SOURCE_DEV="$1"
-DEST_DEV="$2"
+# Remove trailing slash if present
+SOURCE_MNT="${1%/}" 
 
-# The script must be run as root
 if [[ $EUID -ne 0 ]]; then
    echo "Error: This script must be run as root. Please use sudo."
    exit 1
 fi
 
-# --- Cleanup Function ---
-function cleanup {
-  echo "---"
-  echo "Running cleanup: Unmounting drives..."
-  umount "$SOURCE_MNT" &>/dev/null
-  umount "$DEST_MNT" &>/dev/null
-  echo "Cleanup complete."
-}
-trap cleanup EXIT
+if [ ! -d "$SOURCE_MNT" ]; then
+    echo "Error: Source directory $SOURCE_MNT does not exist."
+    exit 1
+fi
+
+# Extract the base directory name (e.g., 'recordings' from '/mnt/frigate_backups/recordings')
+BASE_DIR_NAME=$(basename "$SOURCE_MNT")
 
 # --- Main Script Logic ---
-echo "Starting disk clone process from $SOURCE_DEV to $DEST_DEV..."
+echo "Starting multi-drive offload process from $SOURCE_MNT..."
 
-# 1. Create mount points
-mkdir -p "$SOURCE_MNT" "$DEST_MNT"
+# Set up tracking file on the source drive
+TRACKING_FILE="$SOURCE_MNT/.offload_tracking.log"
+touch "$TRACKING_FILE"
 
-# 2. Mount partitions
-echo "Mounting $SOURCE_DEV to $SOURCE_MNT..."
-if ! mount "$SOURCE_DEV" "$SOURCE_MNT"; then
-    echo "Error: Failed to mount source drive $SOURCE_DEV." >&2
-    exit 1
-fi
+# 10GB safety buffer (in KB)
+BUFFER_KB=10485760 
 
-echo "Mounting $DEST_DEV to $DEST_MNT..."
-if ! mount "$DEST_DEV" "$DEST_MNT"; then
-    echo "Error: Failed to mount destination drive $DEST_DEV." >&2
-    exit 1
-fi
+# Track which destination drive we are currently using
+DEST_INDEX=0
+CURRENT_DEST="${DEST_DIRS[$DEST_INDEX]}"
 
-# 3. Run rsync
-echo "Starting rsync... Log will be at $LOG_FILE"
-rsync_command="rsync -ah --info=progress2 --exclude='/lost+found' '$SOURCE_MNT/' '$DEST_MNT/'"
+echo "Initial destination set to: $CURRENT_DEST"
 
-if eval "$rsync_command"; then
-  # Success
-  echo "Rsync completed successfully."
-  SUBJECT="✅ Success: Disk Clone from $SOURCE_DEV to $DEST_DEV Complete"
-  BODY="The rsync clone process finished without errors."
-else
-  # Failure
-  echo "Rsync failed. Check $LOG_FILE for details."
-  SUBJECT="❌ Error: Disk Clone from $SOURCE_DEV to $DEST_DEV Failed"
-  BODY="The rsync clone process from $SOURCE_DEV to $DEST_DEV failed. See the attached log for details.\n\n$(cat $LOG_FILE)"
-fi
+for DIR in "$SOURCE_MNT"/*; do
+    
+    # Skip standard files or lost+found; we only want directories
+    if [ ! -d "$DIR" ] || [[ "$DIR" == *"lost+found"* ]]; then
+        continue
+    fi
+    
+    DIR_NAME=$(basename "$DIR")
+    
+    # Check if already offloaded
+    if grep -q "^${DIR_NAME}$" "$TRACKING_FILE"; then
+        echo "Skipping $DIR_NAME - Already offloaded."
+        continue
+    fi
 
-# 4. Send notification
-echo "Sending notification email to $EMAIL_RECIPIENT..."
+    echo "---"
+    echo "Evaluating $DIR_NAME..."
+
+    # Get directory size in KB
+    DIR_SIZE_KB=$(du -sk "$DIR" | cut -f1)
+    REQUIRED_SPACE_KB=$((DIR_SIZE_KB + BUFFER_KB))
+    
+    # Loop to find a destination drive with enough space
+    while true; do
+        if [ ! -d "$CURRENT_DEST" ]; then
+            echo "Error: Destination $CURRENT_DEST is not accessible."
+            exit 1
+        fi
+
+        AVAIL_SPACE_KB=$(df -k "$CURRENT_DEST" | awk 'NR==2 {print $4}')
+        
+        if [ "$REQUIRED_SPACE_KB" -lt "$AVAIL_SPACE_KB" ]; then
+            echo "Space check passed on $CURRENT_DEST."
+            echo "Directory Size: $((DIR_SIZE_KB / 1024 / 1024)) GB | Available Space: $((AVAIL_SPACE_KB / 1024 / 1024)) GB"
+            break 
+        else
+            echo "Destination $CURRENT_DEST is full or cannot fit $DIR_NAME."
+            echo "Required: $((REQUIRED_SPACE_KB / 1024 / 1024)) GB | Available: $((AVAIL_SPACE_KB / 1024 / 1024)) GB"
+            
+            DEST_INDEX=$((DEST_INDEX + 1))
+            
+            if [ "$DEST_INDEX" -ge "${#DEST_DIRS[@]}" ]; then
+                SUBJECT="Action Required: All Destination Drives Full"
+                BODY="The offload process has filled all available destination drives.\nIt paused before copying $DIR_NAME.\n\nPlease mount new drives and update the script."
+                
+                echo -e "$BODY" | mail -s "$SUBJECT" "$EMAIL_RECIPIENT"
+                echo "Out of destination drives. Exiting gracefully."
+                exit 0
+            fi
+            
+            CURRENT_DEST="${DEST_DIRS[$DEST_INDEX]}"
+            echo "Switching to next destination drive: $CURRENT_DEST..."
+        fi
+    done
+
+    # Create the base directory on the destination (e.g., /mnt/backup-0/recordings)
+    TARGET_DEST="$CURRENT_DEST/$BASE_DIR_NAME"
+    mkdir -p "$TARGET_DEST"
+
+    # Run rsync to the selected target directory
+    echo "Starting rsync for $DIR_NAME to $TARGET_DEST..."
+    if rsync -ah --info=progress2 "$DIR" "$TARGET_DEST/"; then
+        echo "Successfully copied $DIR_NAME."
+        echo "$DIR_NAME" >> "$TRACKING_FILE"
+    else
+        echo "Rsync failed for $DIR_NAME. Check $LOG_FILE for details."
+        echo "Rsync failed for $DIR_NAME" | mail -s "Error: Offload Failed" "$EMAIL_RECIPIENT"
+        exit 1
+    fi
+
+done
+
+# If the loop finishes naturally, everything has been synced
+SUBJECT="Success: Full Offload Complete"
+BODY="All directories from the 8TB drive have been successfully offloaded to your backup drives. The tracking file shows no directories left to sync."
 echo -e "$BODY" | mail -s "$SUBJECT" "$EMAIL_RECIPIENT"
 
-echo "---"
-echo "Script finished."
-
+echo "Offload complete for all directories."
 exit 0
