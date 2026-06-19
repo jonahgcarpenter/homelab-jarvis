@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # --- Configuration ---
-CT_ID="101"
+CT_ID="105"
 REQUIRED_MOUNT="/mnt/frigate"
 DELAY_SECONDS=120 # The delay in seconds between each check.
 
