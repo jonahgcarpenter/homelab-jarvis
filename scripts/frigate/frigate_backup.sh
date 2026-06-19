@@ -7,7 +7,7 @@
 
 # -- Configuration --
 
-DEVICE="/dev/sdc1"                        # Backup drive partition
+DEVICE="/dev/sdb1"                        # Backup drive partition
 MOUNT_POINT="/mnt/frigate_backups"        # Mount destination
 FRIGATE_SOURCE_DIR="/mnt/frigate/recordings/" # Source (requires trailing slash)
 RSYNC_DEST_SUBDIR="recordings"            # Subdirectory in mount point
