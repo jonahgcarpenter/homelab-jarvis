@@ -8,9 +8,17 @@
 # =================================================================
 
 # --- Configuration ---
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 DEST_DIRS=("/mnt/backup-0" "/mnt/backup-1")
-EMAIL_RECIPIENT="root@pam"
+EMAIL_RECIPIENT="your-email@gmail.com"
 LOG_FILE="/var/log/clone_disk.log"
+
+send_email() {
+    local subject="$1"
+    local body="$2"
+
+    printf '%b\n' "$body" | mail -s "$subject" "$EMAIL_RECIPIENT"
+}
 
 # Send all output to both console and log file
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -99,7 +107,7 @@ for DIR in "$SOURCE_MNT"/*; do
                 SUBJECT="Action Required: All Destination Drives Full"
                 BODY="The offload process has filled all available destination drives.\nIt paused before copying $DIR_NAME.\n\nPlease mount new drives and update the script."
                 
-                echo -e "$BODY" | mail -s "$SUBJECT" "$EMAIL_RECIPIENT"
+                send_email "$SUBJECT" "$BODY"
                 echo "Out of destination drives. Exiting gracefully."
                 exit 0
             fi
@@ -120,7 +128,7 @@ for DIR in "$SOURCE_MNT"/*; do
         echo "$DIR_NAME" >> "$TRACKING_FILE"
     else
         echo "Rsync failed for $DIR_NAME. Check $LOG_FILE for details."
-        echo "Rsync failed for $DIR_NAME" | mail -s "Error: Offload Failed" "$EMAIL_RECIPIENT"
+        send_email "Error: Offload Failed" "Rsync failed for $DIR_NAME"
         exit 1
     fi
 
@@ -129,7 +137,7 @@ done
 # If the loop finishes naturally, everything has been synced
 SUBJECT="Success: Full Offload Complete"
 BODY="All directories from the 8TB drive have been successfully offloaded to your backup drives. The tracking file shows no directories left to sync."
-echo -e "$BODY" | mail -s "$SUBJECT" "$EMAIL_RECIPIENT"
+send_email "$SUBJECT" "$BODY"
 
 echo "Offload complete for all directories."
 exit 0
