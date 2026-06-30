@@ -7,6 +7,7 @@
 
 # -- Configuration --
 
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 DEVICE="/dev/sdb1"                        # Backup drive partition
 MOUNT_POINT="/mnt/frigate_backups"        # Mount destination
 FRIGATE_SOURCE_DIR="/mnt/frigate/recordings/" # Source (requires trailing slash)
@@ -15,13 +16,20 @@ CAMERAS_TO_INCLUDE=("living_room" "hallway" "kitchen")
 
 LOG_FILE="/var/log/frigate_custom_backup.log"
 SCRIPT_NAME="Frigate Backup"
-EMAIL_RECIPIENT="root@pam"                # Proxmox admin recipient
+EMAIL_RECIPIENT="your-email@gmail.com"
 DISK_THRESHOLD=80                         # Alert if disk usage % exceeds this
 
 # -- Helpers --
 
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | sudo tee -a "$LOG_FILE"
+}
+
+send_email() {
+    local subject="$1"
+    local body="$2"
+
+    printf '%b\n' "$body" | mail -s "$subject" "$EMAIL_RECIPIENT"
 }
 
 # -- Execution --
@@ -40,7 +48,7 @@ if [ ! -d "$MOUNT_POINT" ]; then
     log_message "Mount point $MOUNT_POINT missing. Creating..."
     if ! sudo mkdir -p "$MOUNT_POINT"; then
         log_message "ERROR: Failed to create $MOUNT_POINT."
-        echo -e "Subject: [$SCRIPT_NAME] CRITICAL FAILURE\n\nFailed to create $MOUNT_POINT. Check $LOG_FILE." | sudo /usr/sbin/proxmox-mail-forward "$EMAIL_RECIPIENT" 2>/dev/null
+        send_email "[$SCRIPT_NAME] CRITICAL FAILURE" "Failed to create $MOUNT_POINT. Check $LOG_FILE."
         exit 1
     fi
 fi
@@ -69,7 +77,7 @@ fi
 
 if ! $IS_CORRECTLY_MOUNTED; then
     log_message "ERROR: $CRITICAL_ERROR_MESSAGE Exiting."
-    echo -e "Subject: [$SCRIPT_NAME] CRITICAL FAILURE\n\n$CRITICAL_ERROR_MESSAGE Check $LOG_FILE." | sudo /usr/sbin/proxmox-mail-forward "$EMAIL_RECIPIENT" 2>/dev/null
+    send_email "[$SCRIPT_NAME] CRITICAL FAILURE" "$CRITICAL_ERROR_MESSAGE Check $LOG_FILE."
     exit 1
 fi
 
@@ -78,7 +86,7 @@ FULL_RSYNC_DEST="$MOUNT_POINT/$RSYNC_DEST_SUBDIR"
 if ! sudo mkdir -p "$FULL_RSYNC_DEST"; then
     CRITICAL_ERROR_MESSAGE="Failed to create destination $FULL_RSYNC_DEST."
     log_message "ERROR: $CRITICAL_ERROR_MESSAGE"
-    echo -e "Subject: [$SCRIPT_NAME] CRITICAL FAILURE\n\n$CRITICAL_ERROR_MESSAGE Check $LOG_FILE." | sudo /usr/sbin/proxmox-mail-forward "$EMAIL_RECIPIENT" 2>/dev/null
+    send_email "[$SCRIPT_NAME] CRITICAL FAILURE" "$CRITICAL_ERROR_MESSAGE Check $LOG_FILE."
     sudo umount "$MOUNT_POINT" >> "$LOG_FILE" 2>&1
     exit 1
 fi
@@ -166,18 +174,11 @@ if $SEND_EMAIL; then
     [ -n "$DISK_USAGE_LOG_MESSAGE" ] && EMAIL_BODY+="$DISK_USAGE_LOG_MESSAGE\n"
     [ -n "$UMOUNT_MESSAGE_DETAIL" ] && EMAIL_BODY+="Unmount Status: $UMOUNT_MESSAGE_DETAIL\n"
 
-    PROXMOX_MAILER="/usr/bin/proxmox-mail-forward"
-    if [ -x "$PROXMOX_MAILER" ]; then
-        printf "Subject: %s\n\n%s" "$EMAIL_SUBJECT" "$EMAIL_BODY" | sudo "$PROXMOX_MAILER" "$EMAIL_RECIPIENT"
-        if [ $? -eq 0 ]; then
-            log_message "Email sent successfully."
-        else
-            log_message "ERROR: Failed to send email (Code: $?)."
-            if [ $FINAL_EXIT_CODE -eq 0 ]; then FINAL_EXIT_CODE=102; fi
-        fi
+    if send_email "$EMAIL_SUBJECT" "$EMAIL_BODY"; then
+        log_message "Email sent successfully."
     else
-        log_message "ERROR: $PROXMOX_MAILER not found/executable."
-        if [ $FINAL_EXIT_CODE -eq 0 ]; then FINAL_EXIT_CODE=103; fi
+        log_message "ERROR: Failed to send email (Code: $?)."
+        if [ $FINAL_EXIT_CODE -eq 0 ]; then FINAL_EXIT_CODE=102; fi
     fi
 else
     log_message "Success. Disk usage below ${DISK_THRESHOLD}%. Skipping email."
